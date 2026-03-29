@@ -1,22 +1,19 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import OrderPage from './pages/OrderPage'
 import DashboardPage from './pages/DashboardPage'
 
 function App() {
   return (
-    <BrowserRouter>
-      <div style={{ minHeight: '100vh', backgroundColor: '#f7f7f7' }}>
+    <div className="page-shell">
+      <BrowserRouter>
         <Navbar />
-
-        <div style={{ padding: '24px' }}>
-          <Routes>
-            <Route path="/" element={<OrderPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-          </Routes>
-        </div>
-      </div>
-    </BrowserRouter>
+        <Routes>
+          <Route path="/" element={<OrderPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Routes>
+      </BrowserRouter>
+    </div>
   )
 }
 

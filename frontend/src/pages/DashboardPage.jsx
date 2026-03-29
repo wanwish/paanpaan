@@ -1,128 +1,127 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
+
+const API_BASE = 'http://localhost:3000'
 
 function DashboardPage() {
+  const [summary, setSummary] = useState({
+    totalRevenue: 0,
+    totalItems: 0,
+  })
   const [sales, setSales] = useState([])
 
+  const fetchSummary = async () => {
+    const response = await fetch(`${API_BASE}/summary`)
+    const data = await response.json()
+    if (response.ok) setSummary(data)
+  }
+
   const fetchSales = async () => {
-    const { data, error } = await supabase.from('sales').select('*')
-
-    if (error) {
-      console.error('Fetch sales error:', error.message)
-      return
-    }
-
-    setSales(data || [])
+    const response = await fetch(`${API_BASE}/sales`)
+    const data = await response.json()
+    if (response.ok) setSales(data)
   }
 
   useEffect(() => {
+    fetchSummary()
     fetchSales()
   }, [])
 
-  const totalRevenue = sales.reduce((sum, sale) => sum + sale.total_price, 0)
-  const totalItems = sales.reduce((sum, sale) => sum + sale.quantity, 0)
+  const groupedRows = useMemo(() => {
+    const grouped = {}
 
-  const flavorSummary = sales.reduce((acc, sale) => {
-    acc[sale.flavor] = (acc[sale.flavor] || 0) + sale.quantity
-    return acc
-  }, {})
+    for (const sale of sales) {
+      const key = `${sale.flavor}-${sale.size}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          flavor: sale.flavor,
+          size: sale.size,
+          qty: 0,
+          revenue: 0,
+        }
+      }
+      grouped[key].qty += sale.quantity
+      grouped[key].revenue += sale.total_price
+    }
 
-  const sizeSummary = sales.reduce((acc, sale) => {
-    acc[sale.size] = (acc[sale.size] || 0) + sale.quantity
-    return acc
-  }, {})
+    return Object.values(grouped).sort((a, b) => b.revenue - a.revenue)
+  }, [sales])
 
   const bestFlavor =
-    Object.entries(flavorSummary).sort((a, b) => b[1] - a[1])[0]?.[0] || '-'
+    Object.entries(
+      sales.reduce((acc, sale) => {
+        acc[sale.flavor] = (acc[sale.flavor] || 0) + sale.quantity
+        return acc
+      }, {})
+    ).sort((a, b) => b[1] - a[1])[0]?.[0] || '-'
 
   const bestSize =
-    Object.entries(sizeSummary).sort((a, b) => b[1] - a[1])[0]?.[0] || '-'
-
-  const cardStyle = {
-    border: '1px solid #ddd',
-    borderRadius: '12px',
-    padding: '16px',
-    minWidth: '220px',
-    backgroundColor: '#fff',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-  }
+    Object.entries(
+      sales.reduce((acc, sale) => {
+        acc[sale.size] = (acc[sale.size] || 0) + sale.quantity
+        return acc
+      }, {})
+    ).sort((a, b) => b[1] - a[1])[0]?.[0] || '-'
 
   return (
-    <div>
-      <h1>Dashboard</h1>
+    <div className="content">
+      <h2 className="section-title">Sales Dashboard</h2>
+      <p className="section-subtitle">Today's performance at a glance</p>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '16px',
-          marginBottom: '24px',
-        }}
-      >
-        <div style={cardStyle}>
-          <h3>Total Revenue</h3>
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{totalRevenue} THB</p>
+      <div className="dashboard-grid">
+        <div className="dashboard-card">
+          <div className="card-kicker">Total Sales Today</div>
+          <div className="card-value">฿{summary.totalRevenue}</div>
         </div>
 
-        <div style={cardStyle}>
-          <h3>Total Items Sold</h3>
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{totalItems}</p>
+        <div className="dashboard-card">
+          <div className="card-kicker">Best Selling Flavor</div>
+          <div className="card-value">{bestFlavor}</div>
         </div>
 
-        <div style={cardStyle}>
-          <h3>Best Selling Flavor</h3>
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{bestFlavor}</p>
-        </div>
-
-        <div style={cardStyle}>
-          <h3>Best Selling Size</h3>
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{bestSize}</p>
+        <div className="dashboard-card">
+          <div className="card-kicker">Best Selling Size</div>
+          <div className="card-value">{bestSize}</div>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '16px',
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: '#fff',
-            padding: '20px',
-            borderRadius: '12px',
-            border: '1px solid #ddd',
-          }}
-        >
-          <h2>Sales by Flavor</h2>
-          <ul>
-            {Object.entries(flavorSummary).map(([flavor, qty]) => (
-              <li key={flavor}>
-                {flavor}: {qty} pieces
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="panel breakdown-panel">
+        <h3 className="panel-title">Sales Breakdown</h3>
 
-        <div
-          style={{
-            backgroundColor: '#fff',
-            padding: '20px',
-            borderRadius: '12px',
-            border: '1px solid #ddd',
-          }}
-        >
-          <h2>Sales by Size</h2>
-          <ul>
-            {Object.entries(sizeSummary).map(([size, qty]) => (
-              <li key={size}>
-                Size {size}: {qty} pieces
-              </li>
-            ))}
-          </ul>
-        </div>
+        <table className="breakdown-table">
+          <thead>
+            <tr>
+              <th>Flavor</th>
+              <th>Size</th>
+              <th>Qty Sold</th>
+              <th>Revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groupedRows.length > 0 ? (
+              groupedRows.map((row, index) => (
+                <tr key={`${row.flavor}-${row.size}-${index}`}>
+                  <td>{row.flavor}</td>
+                  <td>
+                    <span className="size-badge">{row.size}</span>
+                  </td>
+                  <td>{row.qty}</td>
+                  <td style={{ color: 'var(--primary)', fontWeight: 800 }}>
+                    ฿{row.revenue}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="4" className="empty-text">
+                  No sales data
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+
+      <button className="floating-chat">◌</button>
     </div>
   )
 }
