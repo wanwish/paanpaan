@@ -10,88 +10,175 @@ const sizes = [
 
 const flavors = [
   {
-    name: 'Salmon',
+    key: 'Salmon',
     label: 'Salmon Spicy Mayo',
-    desc: 'With Ebiko',
-    image:
-      'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?auto=format&fit=crop&w=800&q=80',
+    image: '/Salmon.png',
   },
   {
-    name: 'Tuna',
+    key: 'Tuna',
     label: 'Tuna Mayo Kimchi',
-    desc: 'Spicy & Tangy',
-    image:
-      'https://images.unsplash.com/photo-1611143669185-af224c5e3252?auto=format&fit=crop&w=800&q=80',
+    image: '/Tuna.png',
   },
   {
-    name: 'Tomyum',
+    key: 'Tomyum',
     label: 'Tom Yum Kung',
-    desc: 'Thai Classic',
-    image:
-      'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=800&q=80',
+    image: '/TomYumKung.png',
   },
   {
-    name: 'Spam',
+    key: 'Spam',
     label: 'Spam Egg',
-    desc: 'Savory Comfort',
-    image:
-      'https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=800&q=80',
+    image: '/Spam.png',
   },
 ]
 
+const emptyCounts = {
+  Salmon: 0,
+  Tuna: 0,
+  Tomyum: 0,
+  Spam: 0,
+}
+
 function OrderPage() {
   const [selectedSize, setSelectedSize] = useState('M')
-  const [selectedFlavor, setSelectedFlavor] = useState('')
-  const [quantity, setQuantity] = useState(1)
-  const [sales, setSales] = useState([])
+  const [counts, setCounts] = useState(emptyCounts)
+  const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   const activeSize = useMemo(
     () => sizes.find((size) => size.code === selectedSize) || sizes[1],
     [selectedSize]
   )
 
-  const totalPrice = activeSize.price * quantity
+  const totalPieces = useMemo(
+    () => Object.values(counts).reduce((sum, value) => sum + value, 0),
+    [counts]
+  )
 
-  const fetchSales = async () => {
-    const res = await fetch(`${API_BASE}/sales`)
-    const data = await res.json()
-    if (res.ok) setSales(data)
+  const setCount = useMemo(() => {
+    if (activeSize.pieces === 0) return 0
+    return totalPieces / activeSize.pieces
+  }, [totalPieces, activeSize.pieces])
+
+  const isValidMultiple =
+    totalPieces > 0 && totalPieces % activeSize.pieces === 0
+
+  const totalPrice = isValidMultiple ? setCount * activeSize.price : 0
+
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sales`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Unable to fetch orders')
+        return
+      }
+
+      setOrders(data || [])
+    } catch (error) {
+      console.error('Fetch orders error:', error)
+      alert('Cannot connect to backend')
+    }
   }
 
-  const addSale = async () => {
-    if (!selectedFlavor) {
-      alert('Please select a flavor')
+  const updateCount = (flavor, delta) => {
+    setCounts((prev) => {
+      const nextValue = Math.max(0, prev[flavor] + delta)
+      return {
+        ...prev,
+        [flavor]: nextValue,
+      }
+    })
+  }
+
+  const resetCounts = () => {
+    setCounts({
+      Salmon: 0,
+      Tuna: 0,
+      Tomyum: 0,
+      Spam: 0,
+    })
+  }
+
+  const addOrder = async () => {
+    if (!isValidMultiple) {
+      alert(
+        `Size ${selectedSize} must have pieces in multiples of ${activeSize.pieces}`
+      )
+      return
+    }
+
+    const items = Object.entries(counts)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([flavor, quantity]) => ({
+        flavor,
+        quantity,
+      }))
+
+    if (items.length === 0) {
+      alert('Please add at least one flavor')
       return
     }
 
     setLoading(true)
 
-    const response = await fetch(`${API_BASE}/sales`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        flavor: selectedFlavor,
-        size: selectedSize,
-        unit_price: activeSize.price,
-        quantity,
-      }),
-    })
+    try {
+      const response = await fetch(`${API_BASE}/sales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          size: selectedSize,
+          items,
+        }),
+      })
 
-    const data = await response.json()
-    setLoading(false)
+      const data = await response.json()
+      setLoading(false)
 
-    if (!response.ok) {
-      alert(data.error || 'Unable to add sale')
-      return
+      if (!response.ok) {
+        alert(data.error || 'Unable to add order')
+        return
+      }
+
+      resetCounts()
+      await fetchOrders()
+    } catch (error) {
+      setLoading(false)
+      console.error('Add order error:', error)
+      alert('Cannot connect to backend')
     }
+  }
 
-    await fetchSales()
-    setQuantity(1)
+  const deleteOrder = async (orderId) => {
+    const confirmed = window.confirm(`Delete order #${orderId}?`)
+    if (!confirmed) return
+
+    setDeletingId(orderId)
+
+    try {
+      const response = await fetch(`${API_BASE}/sales/${orderId}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+      setDeletingId(null)
+
+      if (!response.ok) {
+        alert(data.error || 'Unable to delete order')
+        return
+      }
+
+      await fetchOrders()
+    } catch (error) {
+      setDeletingId(null)
+      console.error('Delete order error:', error)
+      alert('Cannot connect to backend')
+    }
   }
 
   useEffect(() => {
-    fetchSales()
+    fetchOrders()
   }, [])
 
   return (
@@ -107,7 +194,7 @@ function OrderPage() {
                 onClick={() => setSelectedSize(size.code)}
               >
                 <div className="size-letter">{size.code}</div>
-                <div className="size-pieces">{size.pieces} pieces</div>
+                <div className="size-pieces">{size.pieces} pieces / set</div>
                 <div className="size-price">฿{size.price}</div>
               </div>
             ))}
@@ -116,21 +203,39 @@ function OrderPage() {
           <h2 className="section-title">Pick Your Flavor</h2>
           <div className="flavor-grid">
             {flavors.map((flavor) => (
-              <div
-                key={flavor.name}
-                className={`flavor-card ${
-                  selectedFlavor === flavor.name ? 'active' : ''
-                }`}
-                onClick={() => setSelectedFlavor(flavor.name)}
-              >
-                <img
-                  src={flavor.image}
-                  alt={flavor.label}
-                  className="flavor-image"
-                />
+              <div key={flavor.key} className="flavor-card">
+                <img src={flavor.image} alt={flavor.label} className="flavor-image" />
                 <div className="flavor-content">
                   <h3 className="flavor-name">{flavor.label}</h3>
-                  <p className="flavor-desc">{flavor.desc}</p>
+
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700 }}>Pieces</span>
+
+                    <div className="qty-row">
+                      <button
+                        className="qty-btn"
+                        type="button"
+                        onClick={() => updateCount(flavor.key, -1)}
+                      >
+                        −
+                      </button>
+                      <div className="qty-value">{counts[flavor.key]}</div>
+                      <button
+                        className="qty-btn"
+                        type="button"
+                        onClick={() => updateCount(flavor.key, 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -142,34 +247,40 @@ function OrderPage() {
 
           <div className="summary-row">
             <span>Size</span>
-            <strong>{selectedSize || '—'}</strong>
+            <strong>{selectedSize}</strong>
           </div>
 
           <div className="summary-row">
-            <span>Flavor</span>
-            <strong>{selectedFlavor || '—'}</strong>
+            <span>Pieces per Set</span>
+            <strong>{activeSize.pieces}</strong>
+          </div>
+
+          <div className="summary-row">
+            <span>Current Pieces</span>
+            <strong>{totalPieces}</strong>
+          </div>
+
+          <div className="summary-row">
+            <span>Number of Sets</span>
+            <strong>{isValidMultiple ? setCount : '-'}</strong>
           </div>
 
           <div className="summary-divider" />
 
-          <div className="summary-row">
-            <span>Quantity</span>
-            <div className="qty-row">
-              <button
-                className="qty-btn"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              >
-                −
-              </button>
-              <div className="qty-value">{quantity}</div>
-              <button
-                className="qty-btn"
-                onClick={() => setQuantity((q) => q + 1)}
-              >
-                +
-              </button>
+          {Object.entries(counts).some(([, quantity]) => quantity > 0) ? (
+            Object.entries(counts)
+              .filter(([, quantity]) => quantity > 0)
+              .map(([flavor, quantity]) => (
+                <div className="summary-row" key={flavor}>
+                  <span>{flavor}</span>
+                  <strong>{quantity}</strong>
+                </div>
+              ))
+          ) : (
+            <div className="summary-row">
+              <span className="empty-text">No flavor selected</span>
             </div>
-          </div>
+          )}
 
           <div className="summary-divider" />
 
@@ -178,10 +289,16 @@ function OrderPage() {
             <div className="total-price">฿{totalPrice}</div>
           </div>
 
+          {!isValidMultiple && totalPieces > 0 && (
+            <p className="empty-text" style={{ marginTop: '10px' }}>
+              Total pieces must be a multiple of {activeSize.pieces} for size {selectedSize}
+            </p>
+          )}
+
           <button
-            onClick={addSale}
-            disabled={loading}
-            className={`primary-btn ${selectedFlavor ? 'enabled' : ''}`}
+            onClick={addOrder}
+            disabled={loading || !isValidMultiple}
+            className={`primary-btn ${isValidMultiple ? 'enabled' : ''}`}
           >
             {loading ? 'Saving...' : 'Add to Order'}
           </button>
@@ -189,37 +306,58 @@ function OrderPage() {
       </div>
 
       <div className="panel sales-history-panel">
-        <h3 className="panel-title">Sales History</h3>
+        <h3 className="panel-title">Order History</h3>
 
         <table className="breakdown-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Flavor</th>
+              <th>Order ID</th>
               <th>Size</th>
-              <th>Unit Price</th>
-              <th>Quantity</th>
+              <th>Items</th>
+              <th>Total Pieces</th>
               <th>Total Price</th>
               <th>Sold At</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {sales.length > 0 ? (
-              sales.map((sale) => (
-                <tr key={sale.id}>
-                  <td>{sale.id}</td>
-                  <td>{sale.flavor}</td>
-                  <td>{sale.size}</td>
-                  <td>฿{sale.unit_price}</td>
-                  <td>{sale.quantity}</td>
-                  <td>฿{sale.total_price}</td>
-                  <td>{new Date(sale.sold_at).toLocaleString()}</td>
+            {orders.length > 0 ? (
+              orders.map((order) => (
+                <tr key={order.id}>
+                  <td>{order.id}</td>
+                  <td>{order.size}</td>
+                  <td>
+                    {(order.items || [])
+                      .map((item) => `${item.flavor} x${item.quantity}`)
+                      .join(', ')}
+                  </td>
+                  <td>{order.total_pieces}</td>
+                  <td>฿{order.total_price}</td>
+                  <td>{new Date(order.sold_at).toLocaleString()}</td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => deleteOrder(order.id)}
+                      disabled={deletingId === order.id}
+                      style={{
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        cursor: 'pointer',
+                        background: '#f3d8cf',
+                        color: '#8f3f1b',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {deletingId === order.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td colSpan="7" className="empty-text">
-                  No sales yet
+                  No orders yet
                 </td>
               </tr>
             )}
