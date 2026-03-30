@@ -206,6 +206,9 @@ select {
   overflow: hidden;
   cursor: pointer;
   transition: 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .flavor-image {
@@ -218,18 +221,35 @@ select {
 
 .flavor-content {
   padding: 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 180px;
 }
 
 .flavor-name {
   font-size: 1.25rem;
   font-weight: 800;
-  margin: 0 0 4px;
+  margin: 0;
   line-height: 1.2;
 }
 
 .flavor-desc {
   color: var(--text-soft);
   margin: 0;
+}
+
+.flavor-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;   /* 👉 จัดให้อยู่กลางแนวนอน */
+  align-items: center;       /* 👉 จัดให้อยู่กลางแนวตั้ง */
+  gap: 16px;
+}
+
+.pieces-label {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .order-summary {
@@ -250,6 +270,7 @@ select {
   align-items: center;
   padding: 10px 0;
   font-size: 1.1rem;
+  gap: 12px;
 }
 
 .summary-divider {
@@ -261,7 +282,8 @@ select {
 .qty-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .qty-btn {
@@ -274,6 +296,9 @@ select {
   font-size: 1.5rem;
   font-weight: 800;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .qty-value {

@@ -51,11 +51,17 @@ router.get('/', async (req, res) => {
 // POST /sales
 router.post('/', async (req, res) => {
   try {
-    const { size, items } = req.body
+    const { size, setCount, items } = req.body
 
-    if (!size || !Array.isArray(items) || items.length === 0) {
+    if (!size || !setCount || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
-        error: 'size and items are required',
+        error: 'size, setCount and items are required',
+      })
+    }
+
+    if (setCount < 1) {
+      return res.status(400).json({
+        error: 'setCount must be at least 1',
       })
     }
 
@@ -67,28 +73,29 @@ router.post('/', async (req, res) => {
       })
     }
 
-    const requiredPieces = pieceMap[size]
+    const piecesPerSet = pieceMap[size]
 
-    if (!requiredPieces) {
+    if (!piecesPerSet) {
       return res.status(400).json({ error: 'Invalid size' })
     }
 
     const totalPieces = validItems.reduce((sum, item) => sum + item.quantity, 0)
+    const requiredPieces = piecesPerSet * setCount
 
-    if (totalPieces % requiredPieces !== 0) {
+    if (totalPieces !== requiredPieces) {
       return res.status(400).json({
-        error: `Size ${size} must have pieces in multiples of ${requiredPieces}`,
+        error: `Size ${size} with ${setCount} set(s) must have exactly ${requiredPieces} pieces`,
       })
     }
 
-    const setCount = totalPieces / requiredPieces
-    const totalPrice = setCount * priceMap[size]
+    const totalPrice = priceMap[size] * setCount
 
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .insert([
         {
           size,
+          set_count: setCount,
           total_pieces: totalPieces,
           total_price: totalPrice,
         },
@@ -116,14 +123,39 @@ router.post('/', async (req, res) => {
     }
 
     res.status(201).json({
-      order: {
-        ...orderData,
-        set_count: setCount,
-      },
+      order: orderData,
       items: itemData,
     })
   } catch (err) {
     res.status(500).json({ error: 'Server error while creating order' })
+  }
+})
+
+// DELETE /sales/reset
+// ต้องอยู่ก่อน /:id
+router.delete('/reset', async (req, res) => {
+  try {
+    const { error: itemError } = await supabase
+      .from('order_items')
+      .delete()
+      .neq('id', 0)
+
+    if (itemError) {
+      return res.status(500).json({ error: itemError.message })
+    }
+
+    const { error: orderError } = await supabase
+      .from('orders')
+      .delete()
+      .neq('id', 0)
+
+    if (orderError) {
+      return res.status(500).json({ error: orderError.message })
+    }
+
+    res.json({ message: 'All data reset successfully' })
+  } catch (err) {
+    res.status(500).json({ error: 'Error resetting database' })
   }
 })
 

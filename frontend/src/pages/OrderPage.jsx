@@ -40,10 +40,12 @@ const emptyCounts = {
 
 function OrderPage() {
   const [selectedSize, setSelectedSize] = useState('M')
+  const [setCount, setSetCount] = useState(1)
   const [counts, setCounts] = useState(emptyCounts)
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [resetting, setResetting] = useState(false)
 
   const activeSize = useMemo(
     () => sizes.find((size) => size.code === selectedSize) || sizes[1],
@@ -55,15 +57,9 @@ function OrderPage() {
     [counts]
   )
 
-  const setCount = useMemo(() => {
-    if (activeSize.pieces === 0) return 0
-    return totalPieces / activeSize.pieces
-  }, [totalPieces, activeSize.pieces])
-
-  const isValidMultiple =
-    totalPieces > 0 && totalPieces % activeSize.pieces === 0
-
-  const totalPrice = isValidMultiple ? setCount * activeSize.price : 0
+  const requiredPieces = activeSize.pieces * setCount
+  const canSubmit = totalPieces === requiredPieces && totalPieces > 0
+  const totalPrice = activeSize.price * setCount
 
   const fetchOrders = async () => {
     try {
@@ -102,9 +98,9 @@ function OrderPage() {
   }
 
   const addOrder = async () => {
-    if (!isValidMultiple) {
+    if (!canSubmit) {
       alert(
-        `Size ${selectedSize} must have pieces in multiples of ${activeSize.pieces}`
+        `Size ${selectedSize} with ${setCount} set(s) must have exactly ${requiredPieces} pieces`
       )
       return
     }
@@ -129,6 +125,7 @@ function OrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           size: selectedSize,
+          setCount,
           items,
         }),
       })
@@ -142,6 +139,7 @@ function OrderPage() {
       }
 
       resetCounts()
+      setSetCount(1)
       await fetchOrders()
     } catch (error) {
       setLoading(false)
@@ -177,6 +175,39 @@ function OrderPage() {
     }
   }
 
+  const resetAllData = async () => {
+    const confirmed = window.prompt(
+      'Type "RESET" to confirm deleting all data'
+    )
+
+    if (confirmed !== 'RESET') return
+
+    setResetting(true)
+
+    try {
+      const res = await fetch(`${API_BASE}/sales/reset`, {
+        method: 'DELETE',
+      })
+
+      const data = await res.json()
+      setResetting(false)
+
+      if (!res.ok) {
+        alert(data.error || 'Failed to reset')
+        return
+      }
+
+      resetCounts()
+      setSetCount(1)
+      await fetchOrders()
+      alert('Database reset successfully')
+    } catch (err) {
+      setResetting(false)
+      console.error('Reset error:', err)
+      alert('Cannot connect to backend')
+    }
+  }
+
   useEffect(() => {
     fetchOrders()
   }, [])
@@ -186,6 +217,7 @@ function OrderPage() {
       <div className="order-layout">
         <div>
           <h2 className="section-title">Pick Your Size</h2>
+
           <div className="size-grid">
             {sizes.map((size) => (
               <div
@@ -201,22 +233,17 @@ function OrderPage() {
           </div>
 
           <h2 className="section-title">Pick Your Flavor</h2>
+
           <div className="flavor-grid">
             {flavors.map((flavor) => (
               <div key={flavor.key} className="flavor-card">
                 <img src={flavor.image} alt={flavor.label} className="flavor-image" />
+
                 <div className="flavor-content">
                   <h3 className="flavor-name">{flavor.label}</h3>
 
-                  <div
-                    style={{
-                      marginTop: '14px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span style={{ fontWeight: 700 }}>Pieces</span>
+                  <div className="flavor-footer">
+                    <span className="pieces-label">Pieces</span>
 
                     <div className="qty-row">
                       <button
@@ -226,7 +253,9 @@ function OrderPage() {
                       >
                         −
                       </button>
+
                       <div className="qty-value">{counts[flavor.key]}</div>
+
                       <button
                         className="qty-btn"
                         type="button"
@@ -250,19 +279,45 @@ function OrderPage() {
             <strong>{selectedSize}</strong>
           </div>
 
+          <div className="summary-divider" />
+
+          <div className="summary-row">
+            <span>Sets</span>
+
+            <div className="qty-row">
+              <button
+                className="qty-btn"
+                type="button"
+                onClick={() => setSetCount((prev) => Math.max(1, prev - 1))}
+              >
+                −
+              </button>
+
+              <div className="qty-value">{setCount}</div>
+
+              <button
+                className="qty-btn"
+                type="button"
+                onClick={() => setSetCount((prev) => prev + 1)}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
           <div className="summary-row">
             <span>Pieces per Set</span>
             <strong>{activeSize.pieces}</strong>
           </div>
 
           <div className="summary-row">
-            <span>Current Pieces</span>
-            <strong>{totalPieces}</strong>
+            <span>Required Pieces</span>
+            <strong>{requiredPieces}</strong>
           </div>
 
           <div className="summary-row">
-            <span>Number of Sets</span>
-            <strong>{isValidMultiple ? setCount : '-'}</strong>
+            <span>Current Pieces</span>
+            <strong>{totalPieces}</strong>
           </div>
 
           <div className="summary-divider" />
@@ -289,16 +344,17 @@ function OrderPage() {
             <div className="total-price">฿{totalPrice}</div>
           </div>
 
-          {!isValidMultiple && totalPieces > 0 && (
+          {!canSubmit && totalPieces > 0 && (
             <p className="empty-text" style={{ marginTop: '10px' }}>
-              Total pieces must be a multiple of {activeSize.pieces} for size {selectedSize}
+              You need exactly {requiredPieces} pieces for {setCount} set(s) of size{' '}
+              {selectedSize}
             </p>
           )}
 
           <button
             onClick={addOrder}
-            disabled={loading || !isValidMultiple}
-            className={`primary-btn ${isValidMultiple ? 'enabled' : ''}`}
+            disabled={loading || !canSubmit}
+            className={`primary-btn ${canSubmit ? 'enabled' : ''}`}
           >
             {loading ? 'Saving...' : 'Add to Order'}
           </button>
@@ -308,11 +364,30 @@ function OrderPage() {
       <div className="panel sales-history-panel">
         <h3 className="panel-title">Order History</h3>
 
+        <div style={{ margin: '0 28px 18px', textAlign: 'right' }}>
+          <button
+            onClick={resetAllData}
+            disabled={resetting}
+            style={{
+              background: '#ffebe6',
+              color: '#b42318',
+              border: '1px solid #f4b4a6',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            {resetting ? 'Resetting...' : 'Reset All Data'}
+          </button>
+        </div>
+
         <table className="breakdown-table">
           <thead>
             <tr>
               <th>Order ID</th>
               <th>Size</th>
+              <th>Sets</th>
               <th>Items</th>
               <th>Total Pieces</th>
               <th>Total Price</th>
@@ -326,6 +401,7 @@ function OrderPage() {
                 <tr key={order.id}>
                   <td>{order.id}</td>
                   <td>{order.size}</td>
+                  <td>{order.set_count || 1}</td>
                   <td>
                     {(order.items || [])
                       .map((item) => `${item.flavor} x${item.quantity}`)
@@ -356,7 +432,7 @@ function OrderPage() {
               ))
             ) : (
               <tr>
-                <td colSpan="7" className="empty-text">
+                <td colSpan="8" className="empty-text">
                   No orders yet
                 </td>
               </tr>
