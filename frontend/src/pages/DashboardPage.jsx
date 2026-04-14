@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ChatWidget from '../components/ChatWidget'
 
 const API_BASE = 'http://localhost:3000'
 
@@ -64,10 +65,7 @@ function DashboardPage() {
         </div>
       </div>
 
-      <div
-        className="panel breakdown-panel"
-        style={{ marginBottom: '24px' }}
-      >
+      <div className="panel breakdown-panel" style={{ marginBottom: '24px' }}>
         <h3 className="panel-title">Flavor Totals</h3>
 
         <table className="breakdown-table">
@@ -139,7 +137,7 @@ function DashboardPage() {
         </table>
       </div>
 
-      <button className="floating-chat">◌</button>
+      <ChatWidget />
     </div>
   )
 }
